@@ -1,6 +1,19 @@
 [package]
 name = "rs-benchmark"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
+elasticsearch = { version = "8.17.0-alpha.1"} # Or latest stable 8.x
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+fake = { version = "4", features = ["derive"] }
+dotenv = "0.15" # To load environment variables
+thiserror = "1.0" # For custom errors
+futures = "0.3" # For stream processing in bulk insert
+url = "2.3" # For parsing ES url
+indicatif = "0.17.11"
