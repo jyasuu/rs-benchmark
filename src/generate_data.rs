@@ -28,9 +28,6 @@ pub async fn generate_documents(count: usize) -> Vec<String> {
         let title= fake::faker::lorem::zh_tw::Words(5..20).fake::<Vec<String>>().join(" ");
         let content = fake::faker::lorem::zh_tw::Paragraphs(5..10).fake::<Vec<String>>().join(" "); 
         let created_at = Utc::now() - chrono::Duration::days(rng.gen_range(0..365));
-        
-        println!("title: {:?}", title);
-        println!("content: {:?}", content);
 
         // Escape JSON string literals properly
         let doc = serde_json::json!({

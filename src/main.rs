@@ -9,6 +9,11 @@ use thiserror::Error;
 use tokio_postgres::{Client, NoTls, Error as PgError};
 use url::Url;
 
+use tokio_postgres::types::Type; // <-- Add this import
+use futures_util::pin_mut;       // <-- Add this import
+use tokio_postgres::binary_copy::BinaryCopyInWriter; // <-- Add this import
+
+
 // Declare the module
 mod generate_data;
 
@@ -79,7 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Insert data into both databases
     println!("Inserting data into PostgreSQL...");
     let start_pg_insert = Instant::now();
-    // insert_postgres(&pg_client, &docs).await?;
+    insert_postgres(&pg_client, &docs).await?;
     println!("PostgreSQL insertion took: {:?}", start_pg_insert.elapsed());
 
     println!("Inserting data into Elasticsearch...");
@@ -220,66 +225,54 @@ async fn setup_elasticsearch(client: &Elasticsearch) -> Result<(), BenchmarkErro
 
 
 // --- Insertion Functions ---
+async fn insert_postgres(client: &Client, docs: &[Document]) -> Result<(), BenchmarkError> {
+    // Use COPY for efficient bulk insertion
+    let copy_stmt = format!(
+        "COPY {PG_TABLE_NAME} (title, content, created_at) FROM STDIN (FORMAT BINARY)",
+        PG_TABLE_NAME=PG_TABLE_NAME
+    );
 
-// async fn insert_postgres(client: &Client, docs: &[Document]) -> Result<(), BenchmarkError> {
-//     // Use COPY for efficient bulk insertion
-//     let copy_stmt = format!(
-//         "COPY {PG_TABLE_NAME} (title, content, created_at) FROM STDIN (FORMAT BINARY)",
-//         PG_TABLE_NAME=PG_TABLE_NAME
-//     );
-//     let mut writer = client.copy_in(&copy_stmt).await?;
+    // 1. Get the sink for the COPY IN operation
+    let sink = client.copy_in(&copy_stmt).await?;
 
-//     // Use futures Sink to write data
-//     use tokio_postgres::binary_copy::BinaryCopyInWriter;
-//     use std::io::Write; // Required for writer.write_all
+    // 2. Define the data types of the columns being copied IN ORDER
+    let types = &[Type::TEXT, Type::TEXT, Type::TIMESTAMPTZ];
 
-//     let mut buffer = Vec::new(); // Reusable buffer for writing rows
+    // 3. Create the BinaryCopyInWriter helper
+    //    It takes the sink and the expected column types.
+    let writer = BinaryCopyInWriter::new(sink, types);
 
-//     for doc in docs {
-//         buffer.clear();
-//         // Start row - number of columns (2 in this case: title, content, created_at)
-//         buffer.write_all(&3i16.to_be_bytes()).map_err(BenchmarkError::Io)?;
+    // 4. Pin the writer to the stack for use with async/await.
+    //    The `write` method requires `Pin<&mut Self>`.
+    pin_mut!(writer);
 
-//         // Write title (TEXT)
-//         let title_bytes = doc.title.as_bytes();
-//         buffer.write_all(&(title_bytes.len() as i32).to_be_bytes()).map_err(BenchmarkError::Io)?;
-//         buffer.write_all(title_bytes).map_err(BenchmarkError::Io)?;
+    // 5. Iterate through the documents and write each one using the writer.
+    //    The `write` method takes a slice of references to values that implement `ToSql`.
+    //    `String` implements `ToSql` for `TEXT`.
+    //    `chrono::DateTime<Utc>` implements `ToSql` for `TIMESTAMPTZ`.
+    for doc in docs {
+        writer
+            .as_mut()
+            .write(&[&doc.title, &doc.content, &doc.created_at])
+            .await?; // Propagate potential PgError
+    }
 
-//         // Write content (TEXT)
-//         let content_bytes = doc.content.as_bytes();
-//         buffer.write_all(&(content_bytes.len() as i32).to_be_bytes()).map_err(BenchmarkError::Io)?;
-//         buffer.write_all(content_bytes).map_err(BenchmarkError::Io)?;
+    // 6. Finish the COPY operation. This flushes any remaining buffered data
+    //    and signals completion to the database.
+    writer.finish().await?; // Propagate potential PgError
 
-//         // Write created_at (TIMESTAMPTZ)
-//         // TIMESTAMPTZ is represented as microseconds relative to Postgres epoch (2000-01-01)
-//         let pg_epoch = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-//         let pg_epoch_utc = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(pg_epoch, chrono::Utc);
-//         let duration_since_pg_epoch = doc.created_at.signed_duration_since(pg_epoch_utc);
-//         let micros = duration_since_pg_epoch.num_microseconds().unwrap(); // Handle potential overflow if needed
+    // --- FTS Vector Update (remains the same) ---
+    // This still needs to be done after the data is successfully copied.
+    println!("Updating FTS vectors in PostgreSQL...");
+    let update_start = Instant::now();
+    let updated_rows = client.execute(
+        &format!("UPDATE {PG_TABLE_NAME} SET fts_doc = to_tsvector('english', title || ' ' || content) WHERE fts_doc IS NULL", PG_TABLE_NAME=PG_TABLE_NAME),
+        &[]
+    ).await?;
+    println!("FTS vector update took: {:?}, updated {} potential rows", update_start.elapsed(), updated_rows);
 
-//         buffer.write_all(&8i32.to_be_bytes()).map_err(BenchmarkError::Io)?; // Length of timestamp data (8 bytes for i64)
-//         buffer.write_all(&micros.to_be_bytes()).map_err(BenchmarkError::Io)?;
-
-//         // Write the row buffer to the writer
-//         writer.write_all(&buffer).await.map_err(BenchmarkError::Io)?;
-//     }
-
-//     // Finish the COPY operation
-//     writer.finish().await?;
-
-//     // Now update the generated tsvector column
-//     println!("Updating FTS vectors in PostgreSQL...");
-//     let update_start = Instant::now();
-//     let updated_rows = client.execute(
-//         &format!("UPDATE {PG_TABLE_NAME} SET fts_doc = to_tsvector('english', title || ' ' || content) WHERE fts_doc IS NULL", PG_TABLE_NAME=PG_TABLE_NAME),
-//         &[]
-//     ).await?;
-//     println!("FTS vector update took: {:?}, updated {} potential rows", update_start.elapsed(), updated_rows);
-
-
-//     Ok(())
-// }
-
+    Ok(())
+}
 
 // async fn insert_elasticsearch(client: &Elasticsearch, docs: &[Document]) -> Result<(), BenchmarkError> {
 //     let chunks = docs.chunks(BATCH_SIZE); // Process in batches

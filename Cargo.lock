@@ -1323,6 +1323,7 @@ dependencies = [
  "elasticsearch",
  "fake",
  "futures",
+ "futures-util",
  "indicatif",
  "rand 0.8.5",
  "serde",

@@ -17,3 +17,4 @@ thiserror = "1.0" # For custom errors
 futures = "0.3" # For stream processing in bulk insert
 url = "2.3" # For parsing ES url
 indicatif = "0.17.11"
+futures-util = "0.3.31"
