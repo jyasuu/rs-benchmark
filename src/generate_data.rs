@@ -6,7 +6,7 @@ use chrono::Utc;
 // use faker::Faker;
 // use faker::locales::EN;
 // Option 2: If using 'faker-rs' crate
-use fake::{locales::EN, Fake, Faker};
+use fake::Fake;
 use rand::Rng;
 
 pub async fn generate_documents(count: usize) -> Vec<String> {

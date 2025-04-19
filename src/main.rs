@@ -1,13 +1,15 @@
 use std::time::{Duration, Instant};
 use std::env;
 use dotenv::dotenv;
-use elasticsearch::{Elasticsearch, Error as EsError, http::transport::{Transport, TransportBuilder}, SearchParts, BulkParts, indices::IndicesExistsParts, indices::IndicesCreateParts};
-use futures::stream::{self, StreamExt};
+use elasticsearch::{Elasticsearch, BulkOperation,  Error as EsError, http::transport::Transport, SearchParts, BulkParts, indices::IndicesExistsParts, indices::IndicesCreateParts};
+
+use serde_json::Value;                           // <-- Add Value for BulkOperation data
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
 use tokio_postgres::{Client, NoTls, Error as PgError};
-use url::Url;
+
 
 use tokio_postgres::types::Type; // <-- Add this import
 use futures_util::pin_mut;       // <-- Add this import
@@ -69,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Schemas ready.");
 
     // Generate test data
-    let data_count = 10;
+    let data_count = 1_000_000;
     println!("Generating {} documents...", data_count);
     let start_gen = Instant::now();
     let docs_json = generate_data::generate_documents(data_count).await;
@@ -89,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Inserting data into Elasticsearch...");
     let start_es_insert = Instant::now();
-    // insert_elasticsearch(&es_client, &docs).await?;
+    insert_elasticsearch(&es_client, &docs).await?;
     println!("Elasticsearch insertion took: {:?}", start_es_insert.elapsed());
 
     // Run benchmarks
@@ -101,6 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "benchmark results",
         "lorem ipsum dolor", // Add more generic terms likely present
         "quick brown fox",   // Add terms unlikely to be present
+        "quos quia",
     ];
 
     println!("\nRunning PostgreSQL benchmarks...");
@@ -274,61 +277,94 @@ async fn insert_postgres(client: &Client, docs: &[Document]) -> Result<(), Bench
     Ok(())
 }
 
-// async fn insert_elasticsearch(client: &Elasticsearch, docs: &[Document]) -> Result<(), BenchmarkError> {
-//     let chunks = docs.chunks(BATCH_SIZE); // Process in batches
+async fn insert_elasticsearch(client: &Elasticsearch, docs: &[Document]) -> Result<(), BenchmarkError> {
+    let chunks = docs.chunks(BATCH_SIZE); // Process in batches
 
-//     for chunk in chunks {
-//         let mut body: Vec<u8> = Vec::new();
-//         for doc in chunk {
-//             // Add the action line (index into our specific index)
-//             let action = json!({ "index": { "_index": ES_INDEX_NAME } });
-//             body.extend_from_slice(serde_json::to_string(&action)?.as_bytes());
-//             body.push(b'\n'); // Newline delimiter
+    println!("Inserting {} documents into Elasticsearch in batches of {}...", docs.len(), BATCH_SIZE);
+    let pb = indicatif::ProgressBar::new(docs.len() as u64); // Add progress bar
+    pb.set_style(indicatif::ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
+        .unwrap()
+        .progress_chars("#>-"));
 
-//             // Add the document source
-//             body.extend_from_slice(serde_json::to_string(doc)?.as_bytes());
-//             body.push(b'\n'); // Newline delimiter
-//         }
+    for chunk in chunks {
+        let mut operations: Vec<BulkOperation<Value>> = Vec::with_capacity(chunk.len());
 
-//         let response = client
-//             .bulk(BulkParts::Index(ES_INDEX_NAME))
-//             .body(body)
-//             .send()
-//             .await?;
+        for doc in chunk {
+            // Use serde_json::to_value which returns Result<Value, Error>
+            let doc_value = match serde_json::to_value(doc) {
+                Ok(val) => val,
+                Err(e) => {
+                    // Handle potential serialization error for a single doc
+                    eprintln!("Failed to serialize document: {:?}, error: {}", doc, e);
+                    // Optionally skip this doc or return an error
+                    continue; // Skip this document
+                    // Or: return Err(BenchmarkError::Json(e)); // Stop the whole process
+                }
+            };
+            // Use BulkOperation::index(doc_value).into() which is simpler
+            let op = BulkOperation::index(doc_value).into();
+            operations.push(op);
+            // Increment progress bar *after* successfully adding the operation
+            pb.inc(1);
+        }
 
-//         if !response.status_code().is_success() {
-//             let response_body = response.text().await?;
-//             eprintln!("Elasticsearch bulk insert failed: {}", response_body);
-//             return Err(BenchmarkError::EsBulkError("Bulk insert failed".to_string()));
-//         }
+        // Skip sending if there are no operations (e.g., all docs failed serialization)
+        if operations.is_empty() {
+            continue;
+        }
 
-//         // Check response body for item-level errors (optional but recommended)
-//         let response_json: serde_json::Value = response.json().await?;
-//         if response_json["errors"].as_bool().unwrap_or(false) {
-//             eprintln!("Errors occurred during Elasticsearch bulk insert:");
-//             if let Some(items) = response_json["items"].as_array() {
-//                 for item in items {
-//                     if let Some(op_type) = item.as_object().and_then(|o| o.keys().next()) {
-//                         if let Some(error) = item[op_type]["error"].as_object() {
-//                              eprintln!("  Error: {:?}", error);
-//                         }
-//                     }
-//                 }
-//             }
-//              return Err(BenchmarkError::EsBulkError("Errors reported in bulk response items".to_string()));
-//         }
-//     }
+        let response = client
+            .bulk(BulkParts::Index(ES_INDEX_NAME))
+            .body(operations) // Pass the Vec<BulkOperation<Value>> directly
+            .send()
+            .await?;
 
-//     // Force a refresh for consistent search results immediately after indexing
-//     println!("Refreshing Elasticsearch index...");
-//     let refresh_start = Instant::now();
-//     client.indices().refresh(elasticsearch::indices::IndicesRefreshParts::Index(&[ES_INDEX_NAME])).send().await?;
-//     println!("Elasticsearch refresh took: {:?}", refresh_start.elapsed());
+        // --- FIX IS HERE ---
+        // 1. Get the status code *before* potentially consuming the response body
+        let status = response.status_code();
+
+        // 2. Check if the HTTP request itself failed
+        if !status.is_success() {
+            pb.finish_with_message(format!("Error during bulk insert (HTTP Status: {})!", status));
+            // Consume the response to get the error text
+            let response_body_text = response.text().await?;
+            eprintln!("Elasticsearch bulk insert failed with status {}: {}", status, response_body_text);
+            return Err(BenchmarkError::EsBulkError(format!(
+                "Bulk insert failed with status {} - Body: {}", status, response_body_text
+            )));
+        }
+
+        // 3. If HTTP status is OK, *then* consume the response to parse the JSON body
+        let response_body = response.json::<Value>().await?;
+        // --- END FIX ---
 
 
-//     Ok(())
-// }
+        // 4. Check the 'errors' field within the JSON response body
+        // Use .get() for safer access, as the field might not exist or not be a boolean
+        if let Some(true) = response_body.get("errors").and_then(|v| v.as_bool()) {
+             pb.set_message(format!("Batch completed with item errors."));
+             // Log the errors for inspection, but don't necessarily stop the whole process
+             eprintln!("WARNING: Elasticsearch bulk operation reported errors for some items. Check response details.");
+             // You might want more detailed logging here, e.g., iterating through response_body["items"]
+             // println!("Bulk response with errors: {:?}", response_body); // Uncomment for debugging
+        } else {
+             pb.set_message(format!("Batch successful."));
+             // Optional: Log success details if needed
+             // println!("Bulk operation succeeded: {:?}", response_body); // Uncomment for debugging
+        }
+    }
+    pb.finish_with_message("Elasticsearch insertion complete");
 
+
+    // Force a refresh (remains the same)
+    println!("Refreshing Elasticsearch index...");
+    let refresh_start = Instant::now();
+    client.indices().refresh(elasticsearch::indices::IndicesRefreshParts::Index(&[ES_INDEX_NAME])).send().await?;
+    println!("Elasticsearch refresh took: {:?}", refresh_start.elapsed());
+
+    Ok(())
+}
 
 // --- Benchmark Functions (Updated PG Query) ---
 
@@ -441,4 +477,5 @@ async fn benchmark_elasticsearch(client: &Elasticsearch, queries: &[&str]) -> Re
     );
     Ok(())
 }
+
 
