@@ -1,27 +1,25 @@
+// src/main.rs
 use std::time::{Duration, Instant};
 use std::env;
 use dotenv::dotenv;
-use elasticsearch::{Elasticsearch, BulkOperation,  Error as EsError, http::transport::Transport, SearchParts, BulkParts, indices::IndicesExistsParts, indices::IndicesCreateParts};
-
-use serde_json::Value;                           // <-- Add Value for BulkOperation data
-
+use elasticsearch::{
+    Elasticsearch, BulkOperation, Error as EsError, http::transport::Transport, SearchParts,
+    BulkParts, indices::{IndicesExistsParts, IndicesCreateParts, IndicesRefreshParts},
+};
+use serde_json::{Value, json}; // Keep Value, add json macro usage
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use thiserror::Error;
 use tokio_postgres::{Client, NoTls, Error as PgError};
-
-
-use tokio_postgres::types::Type; // <-- Add this import
-use futures_util::pin_mut;       // <-- Add this import
-use tokio_postgres::binary_copy::BinaryCopyInWriter; // <-- Add this import
-
+use tokio_postgres::types::{Type, ToSql}; // Add ToSql
+use futures_util::pin_mut;
+use tokio_postgres::binary_copy::BinaryCopyInWriter;
 
 // Declare the module
 mod generate_data;
 
-const BATCH_SIZE: usize = 500; // For bulk inserts
-const ES_INDEX_NAME: &str = "documents";
-const PG_TABLE_NAME: &str = "documents";
+const BATCH_SIZE: usize = 1000; // Increase batch size for COPY/Bulk
+const ES_INDEX_NAME: &str = "documents_jsonb"; // New index name
+const PG_TABLE_NAME: &str = "documents_jsonb"; // New table name
 
 #[derive(Error, Debug)]
 enum BenchmarkError {
@@ -39,148 +37,158 @@ enum BenchmarkError {
     UrlParse(#[from] url::ParseError),
     #[error("Elasticsearch Bulk Operation Error: {0}")]
     EsBulkError(String),
+    #[error("Data Conversion Error: {0}")]
+    Conversion(String),
 }
 
-// Simple struct to deserialize JSON data for insertion
-#[derive(Serialize, Deserialize, Debug)]
+// Updated struct to match the new JSON structure
+// We'll primarily work with serde_json::Value for flexibility,
+// but having a struct can be useful for validation or specific cases.
+#[derive(Serialize, Deserialize, Debug, Clone)] // Add Clone
 struct Document {
     title: String,
     content: String,
     created_at: chrono::DateTime<chrono::Utc>,
+    tags: Vec<String>,
+    attributes: Value, // Use Value for flexible attributes object
 }
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenv().ok(); // Load .env file
+    dotenv().ok();
 
-    println!("Starting benchmark...");
+    println!("Starting benchmark with JSONB focus...");
 
-    // Initialize connections
+    // --- Connections (remain the same) ---
     println!("Connecting to databases...");
     let pg_client = connect_postgres().await?;
-    // let es_client = connect_elasticsearch().await?;
-    let transport = Transport::single_node("http://localhost:9200")?;
+    let transport = Transport::single_node(
+        &env::var("ELASTICSEARCH_URL")
+            .unwrap_or_else(|_| "http://localhost:9200".to_string())
+    )?;
     let es_client = Elasticsearch::new(transport);
-    // let es_client = Elasticsearch::default();
     println!("Connections established.");
 
-    // Setup databases (create table/index if they don't exist)
+    // --- Setup (modified for JSONB and new ES mapping) ---
     println!("Setting up database schemas...");
     setup_postgres(&pg_client).await?;
     setup_elasticsearch(&es_client).await?;
     println!("Schemas ready.");
 
-    // Generate test data
-    let data_count = 1_000_000;
+    // --- Data Generation (uses updated generate_data.rs) ---
+    let data_count = 100_000; // Adjust as needed
     println!("Generating {} documents...", data_count);
     let start_gen = Instant::now();
-    let docs_json = generate_data::generate_documents(data_count).await;
+    let docs_json_strings = generate_data::generate_documents(data_count).await;
     println!("Data generation took: {:?}", start_gen.elapsed());
 
-    // Parse JSON strings into Document structs
-    let docs: Vec<Document> = docs_json
+    // --- Parse JSON strings into Value for insertion ---
+    // We need Value for both PG JSONB COPY and ES Bulk
+    println!("Parsing JSON strings...");
+    let start_parse = Instant::now();
+    let docs_value: Vec<Value> = docs_json_strings
         .iter()
         .map(|s| serde_json::from_str(s))
         .collect::<Result<Vec<_>, _>>()?;
+    println!("JSON parsing took: {:?}", start_parse.elapsed());
 
-    // Insert data into both databases
-    println!("Inserting data into PostgreSQL...");
+    // --- Insertion (modified for JSONB COPY and ES Bulk) ---
+    println!("Inserting data into PostgreSQL (JSONB)...");
     let start_pg_insert = Instant::now();
-    insert_postgres(&pg_client, &docs).await?;
-    println!("PostgreSQL insertion took: {:?}", start_pg_insert.elapsed());
+    insert_postgres(&pg_client, &docs_value).await?;
+    println!("PostgreSQL JSONB insertion took: {:?}", start_pg_insert.elapsed());
 
     println!("Inserting data into Elasticsearch...");
     let start_es_insert = Instant::now();
-    insert_elasticsearch(&es_client, &docs).await?;
+    // Pass Value directly to ES insert function
+    insert_elasticsearch_value(&es_client, &docs_value).await?;
     println!("Elasticsearch insertion took: {:?}", start_es_insert.elapsed());
 
-    // Run benchmarks
-    let queries = vec![
-        "database performance",
-        "search engine",
-        "distributed systems",
-        "rust programming",
-        "benchmark results",
-        "lorem ipsum dolor", // Add more generic terms likely present
-        "quick brown fox",   // Add terms unlikely to be present
-        "quos quia",
+    // --- Benchmarks (modified queries) ---
+    // Define queries suitable for JSONB and ES structure
+    let pg_queries = vec![
+        // Tag containment ('@>') - Does tags array contain ["rust"]?
+        ("tags @> 'rust'", json!(["rust"]).to_string()),
+        // Attribute key existence ('?') - Does attributes object have key 'att1'?
+        ("attr ? 'att1'", "att1".to_string()),
+        // Nested attribute value ('->>') - Is attributes.att2.nested_key == 'com'?
+        ("attr nested = 'com'", "com".to_string()), // We'll use ->> inside the query
+        // Attribute value comparison ('>') - Is attributes.att0 > 500?
+        ("attr att0 > 500", json!(500).to_string()),
+        // Optional attribute existence ('?')
+        ("attr ? 'att_opt_1'", "att_opt_1".to_string()),
+        // Non-existent tag
+        ("tags @> 'nonexistent'", json!(["nonexistent"]).to_string()),
     ];
 
-    println!("\nRunning PostgreSQL benchmarks...");
-    benchmark_postgres(&pg_client, &queries).await?;
+    let es_queries = vec![
+        // Match a specific tag (term query on keyword field)
+        ("tags: rust", json!({"term": {"tags": "rust"}})),
+        // Check for attribute existence (exists query)
+        ("exists: attributes.att1", json!({"exists": {"field": "attributes.att1"}})),
+        // Match nested attribute value (term query on keyword/text)
+        // Assuming default mapping makes nested_key text/keyword
+        ("attributes.att2.nested_key: com", json!({"term": {"attributes.att2.nested_key": "com"}})),
+         // Range query on numeric attribute
+        ("attributes.att0 > 500", json!({"range": {"attributes.att0": {"gt": 500}}})),
+        // Check for optional attribute existence
+        ("exists: attributes.att_opt_1", json!({"exists": {"field": "attributes.att_opt_1"}})),
+        // Non-existent tag
+        ("tags: nonexistent", json!({"term": {"tags": "nonexistent"}})),
+    ];
+
+
+    println!("\nRunning PostgreSQL JSONB benchmarks...");
+    benchmark_postgres(&pg_client, &pg_queries).await?;
 
     println!("\nRunning Elasticsearch benchmarks...");
-    benchmark_elasticsearch(&es_client, &queries).await?;
+    benchmark_elasticsearch(&es_client, &es_queries).await?;
 
     println!("\nBenchmark finished.");
     Ok(())
 }
 
-// --- Connection Functions ---
-
+// --- Connection Functions (remain the same) ---
 async fn connect_postgres() -> Result<Client, BenchmarkError> {
     let db_url = env::var("DATABASE_URL")
         .map_err(|_| BenchmarkError::EnvVar("DATABASE_URL".to_string()))?;
     let (client, connection) = tokio_postgres::connect(&db_url, NoTls).await?;
-
-    // The connection object performs the actual communication with the database,
-    // so spawn it off to run on its own.
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("PostgreSQL connection error: {}", e);
         }
     });
-
     Ok(client)
 }
 
-// async fn connect_elasticsearch() -> Result<Elasticsearch, BenchmarkError> {
-//     let es_url = env::var("ELASTICSEARCH_URL")
-//         .map_err(|_| BenchmarkError::EnvVar("ELASTICSEARCH_URL".to_string()))?;
-//     let url = Url::parse(&es_url)?;
-
-//     let transport = TransportBuilder::new(Transport::single_node(&es_url)?)
-//         // .auth(...) // Add authentication if needed
-//         .build()?;
-//     Ok(Elasticsearch::new(transport))
-// }
-
-// --- Setup Functions ---
+// --- Setup Functions (Updated for JSONB and new ES Mapping) ---
 
 async fn setup_postgres(client: &Client) -> Result<(), BenchmarkError> {
-    // Use IF NOT EXISTS to avoid errors on subsequent runs
-    // Create a tsvector column and index for efficient FTS
+    // Create table with a single JSONB column
+    // Add a GIN index for efficient JSONB operations
     client.batch_execute(&format!(
         r#"
         CREATE TABLE IF NOT EXISTS {PG_TABLE_NAME} (
-            id SERIAL PRIMARY KEY,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL
+            id SERIAL PRIMARY KEY, -- Keep ID for potential reference
+            data JSONB NOT NULL
         );
-        -- Add tsvector column if it doesn't exist
-        DO $$
-        BEGIN
-            ALTER TABLE {PG_TABLE_NAME} ADD COLUMN IF NOT EXISTS fts_doc tsvector;
-        EXCEPTION
-            WHEN duplicate_column THEN -- Handle potential race condition if run concurrently
-                RAISE NOTICE 'Column fts_doc already exists in {PG_TABLE_NAME}.';
-        END;
-        $$;
-        -- Update existing rows where fts_doc might be null (e.g., if table existed before)
-        UPDATE {PG_TABLE_NAME} SET fts_doc = to_tsvector('english', title || ' ' || content) WHERE fts_doc IS NULL;
+        -- Create a GIN index on the JSONB column. This is crucial for performance.
+        CREATE INDEX IF NOT EXISTS documents_data_gin_idx ON {PG_TABLE_NAME} USING GIN(data);
+        CREATE INDEX IF NOT EXISTS documents_data_gin_json_idx ON {PG_TABLE_NAME} USING GIN (data jsonb_path_ops);
+        CREATE INDEX IF NOT EXISTS documents_data_gin_jsonb_idx ON {PG_TABLE_NAME} USING GIN (data jsonb_ops);
 
-        -- Create the GIN index if it doesn't exist
-        CREATE INDEX IF NOT EXISTS documents_fts_idx ON {PG_TABLE_NAME} USING GIN(fts_doc);
+        -- Optional: Index specific paths if needed for very specific query patterns
+        CREATE INDEX IF NOT EXISTS documents_tags_gin_idx ON {PG_TABLE_NAME} USING GIN ((data -> 'tags'));
+        CREATE INDEX IF NOT EXISTS documents_attr_gin_idx ON {PG_TABLE_NAME} USING GIN ((data -> 'attributes'));
 
         -- Optional: Clear table for a fresh benchmark run
-        -- TRUNCATE TABLE {PG_TABLE_NAME};
+        -- TRUNCATE TABLE {PG_TABLE_NAME} RESTART IDENTITY;
         "#, PG_TABLE_NAME=PG_TABLE_NAME)
     ).await?;
-    println!("PostgreSQL table '{}' and FTS index checked/created.", PG_TABLE_NAME);
+    println!("PostgreSQL table '{}' with JSONB column and GIN index checked/created.", PG_TABLE_NAME);
     Ok(())
 }
-
 
 async fn setup_elasticsearch(client: &Elasticsearch) -> Result<(), BenchmarkError> {
     let index_exists = client
@@ -192,7 +200,7 @@ async fn setup_elasticsearch(client: &Elasticsearch) -> Result<(), BenchmarkErro
         .is_success();
 
     if !index_exists {
-        println!("Creating Elasticsearch index '{}'...", ES_INDEX_NAME);
+        println!("Creating Elasticsearch index '{}' with new mapping...", ES_INDEX_NAME);
         let create_response = client
             .indices()
             .create(IndicesCreateParts::Index(ES_INDEX_NAME))
@@ -201,7 +209,23 @@ async fn setup_elasticsearch(client: &Elasticsearch) -> Result<(), BenchmarkErro
                     "properties": {
                         "title": { "type": "text" },
                         "content": { "type": "text" },
-                        "created_at": { "type": "date" }
+                        "created_at": { "type": "date" },
+                        // Index tags as keyword for exact matching, filtering, aggregations
+                        "tags": { "type": "keyword" },
+                        // Index attributes as an object. Dynamic mapping will handle sub-fields.
+                        // For production, you might explicitly map known attributes
+                        // (e.g., "att0": {"type": "integer"}) for better control.
+                        "attributes": {
+                            "type": "object",
+                            // "enabled": true // default is true
+                            "properties": {
+                                "att0": { "type": "integer" }, // Explicitly map known numeric field
+                                "att1": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 }}}, // Text + keyword
+                                "att2": { "type": "object", "enabled": true }, // Allow dynamic mapping within att2
+                                "att3": { "type": "keyword" } // Array of strings often best as keyword
+                                // Optional attributes will be dynamically mapped
+                            }
+                        }
                     }
                 }
             }))
@@ -209,9 +233,8 @@ async fn setup_elasticsearch(client: &Elasticsearch) -> Result<(), BenchmarkErro
             .await?;
 
         if !create_response.status_code().is_success() {
-             // Read the response body for more details on failure
             let response_body = create_response.text().await?;
-            eprintln!("Failed to create index: {}", response_body);
+            eprintln!("Failed to create index '{}': {}", ES_INDEX_NAME, response_body);
             return Err(BenchmarkError::EsBulkError(format!(
                 "Failed to create index '{}'", ES_INDEX_NAME
             )));
@@ -219,7 +242,8 @@ async fn setup_elasticsearch(client: &Elasticsearch) -> Result<(), BenchmarkErro
          println!("Elasticsearch index '{}' created.", ES_INDEX_NAME);
     } else {
         println!("Elasticsearch index '{}' already exists.", ES_INDEX_NAME);
-        // Optional: Delete and recreate index for a fresh run
+        // Optional: Delete index for a fresh run
+        // println!("Deleting existing Elasticsearch index '{}'...", ES_INDEX_NAME);
         // client.indices().delete(IndicesDeleteParts::Index(&[ES_INDEX_NAME])).send().await?;
         // setup_elasticsearch(client).await?; // Recurse to create it
     }
@@ -227,61 +251,56 @@ async fn setup_elasticsearch(client: &Elasticsearch) -> Result<(), BenchmarkErro
 }
 
 
-// --- Insertion Functions ---
-async fn insert_postgres(client: &Client, docs: &[Document]) -> Result<(), BenchmarkError> {
-    // Use COPY for efficient bulk insertion
+// --- Insertion Functions (Updated for JSONB COPY and ES Value) ---
+
+async fn insert_postgres(client: &Client, docs: &[Value]) -> Result<(), BenchmarkError> {
+    // Use COPY BINARY for efficient bulk insertion of JSONB
     let copy_stmt = format!(
-        "COPY {PG_TABLE_NAME} (title, content, created_at) FROM STDIN (FORMAT BINARY)",
-        PG_TABLE_NAME=PG_TABLE_NAME
+        // Copy into the 'data' column
+        "COPY {PG_TABLE_NAME} (data) FROM STDIN (FORMAT BINARY)",
+        PG_TABLE_NAME = PG_TABLE_NAME
     );
 
-    // 1. Get the sink for the COPY IN operation
     let sink = client.copy_in(&copy_stmt).await?;
 
-    // 2. Define the data types of the columns being copied IN ORDER
-    let types = &[Type::TEXT, Type::TEXT, Type::TIMESTAMPTZ];
-
-    // 3. Create the BinaryCopyInWriter helper
-    //    It takes the sink and the expected column types.
+    // The type for the 'data' column is JSONB
+    let types = &[Type::JSONB];
     let writer = BinaryCopyInWriter::new(sink, types);
-
-    // 4. Pin the writer to the stack for use with async/await.
-    //    The `write` method requires `Pin<&mut Self>`.
     pin_mut!(writer);
 
-    // 5. Iterate through the documents and write each one using the writer.
-    //    The `write` method takes a slice of references to values that implement `ToSql`.
-    //    `String` implements `ToSql` for `TEXT`.
-    //    `chrono::DateTime<Utc>` implements `ToSql` for `TIMESTAMPTZ`.
-    for doc in docs {
-        writer
-            .as_mut()
-            .write(&[&doc.title, &doc.content, &doc.created_at])
-            .await?; // Propagate potential PgError
+    println!("Starting PostgreSQL COPY operation for {} documents...", docs.len());
+    let pb = indicatif::ProgressBar::new(docs.len() as u64);
+     pb.set_style(indicatif::ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+        .unwrap()
+        .progress_chars("#>-"));
+
+
+    // Iterate through the serde_json::Value objects and write them
+    // serde_json::Value implements ToSql for JSONB
+    for doc_value in docs {
+        // write expects a slice of references implementing ToSql
+        writer.as_mut().write(&[doc_value]).await?;
+        pb.inc(1);
     }
 
-    // 6. Finish the COPY operation. This flushes any remaining buffered data
-    //    and signals completion to the database.
-    writer.finish().await?; // Propagate potential PgError
-
-    // --- FTS Vector Update (remains the same) ---
-    // This still needs to be done after the data is successfully copied.
-    println!("Updating FTS vectors in PostgreSQL...");
-    let update_start = Instant::now();
-    let updated_rows = client.execute(
-        &format!("UPDATE {PG_TABLE_NAME} SET fts_doc = to_tsvector('english', title || ' ' || content) WHERE fts_doc IS NULL", PG_TABLE_NAME=PG_TABLE_NAME),
-        &[]
-    ).await?;
-    println!("FTS vector update took: {:?}, updated {} potential rows", update_start.elapsed(), updated_rows);
+    // Finish the COPY operation
+    writer.finish().await?;
+    pb.finish_with_message("PostgreSQL COPY complete");
 
     Ok(())
 }
 
-async fn insert_elasticsearch(client: &Elasticsearch, docs: &[Document]) -> Result<(), BenchmarkError> {
-    let chunks = docs.chunks(BATCH_SIZE); // Process in batches
+// Keep the original insert_elasticsearch but rename it slightly
+// This version works if you have Vec<Document>
+// async fn insert_elasticsearch_struct(client: &Elasticsearch, docs: &[Document]) -> Result<(), BenchmarkError> { ... }
+
+// New version accepting Vec<Value> directly
+async fn insert_elasticsearch_value(client: &Elasticsearch, docs: &[Value]) -> Result<(), BenchmarkError> {
+    let chunks = docs.chunks(BATCH_SIZE);
 
     println!("Inserting {} documents into Elasticsearch in batches of {}...", docs.len(), BATCH_SIZE);
-    let pb = indicatif::ProgressBar::new(docs.len() as u64); // Add progress bar
+    let pb = indicatif::ProgressBar::new(docs.len() as u64);
     pb.set_style(indicatif::ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
         .unwrap()
@@ -290,44 +309,28 @@ async fn insert_elasticsearch(client: &Elasticsearch, docs: &[Document]) -> Resu
     for chunk in chunks {
         let mut operations: Vec<BulkOperation<Value>> = Vec::with_capacity(chunk.len());
 
-        for doc in chunk {
-            // Use serde_json::to_value which returns Result<Value, Error>
-            let doc_value = match serde_json::to_value(doc) {
-                Ok(val) => val,
-                Err(e) => {
-                    // Handle potential serialization error for a single doc
-                    eprintln!("Failed to serialize document: {:?}, error: {}", doc, e);
-                    // Optionally skip this doc or return an error
-                    continue; // Skip this document
-                    // Or: return Err(BenchmarkError::Json(e)); // Stop the whole process
-                }
-            };
-            // Use BulkOperation::index(doc_value).into() which is simpler
-            let op = BulkOperation::index(doc_value).into();
+        for doc_value in chunk {
+            // Since we already have Value, just clone it for the operation
+            // Use BulkOperation::index(doc_value.clone()).into()
+            let op = BulkOperation::index(doc_value.clone()).into();
             operations.push(op);
-            // Increment progress bar *after* successfully adding the operation
             pb.inc(1);
         }
 
-        // Skip sending if there are no operations (e.g., all docs failed serialization)
         if operations.is_empty() {
             continue;
         }
 
         let response = client
             .bulk(BulkParts::Index(ES_INDEX_NAME))
-            .body(operations) // Pass the Vec<BulkOperation<Value>> directly
+            .body(operations)
             .send()
             .await?;
 
-        // --- FIX IS HERE ---
-        // 1. Get the status code *before* potentially consuming the response body
         let status = response.status_code();
 
-        // 2. Check if the HTTP request itself failed
         if !status.is_success() {
             pb.finish_with_message(format!("Error during bulk insert (HTTP Status: {})!", status));
-            // Consume the response to get the error text
             let response_body_text = response.text().await?;
             eprintln!("Elasticsearch bulk insert failed with status {}: {}", status, response_body_text);
             return Err(BenchmarkError::EsBulkError(format!(
@@ -335,80 +338,99 @@ async fn insert_elasticsearch(client: &Elasticsearch, docs: &[Document]) -> Resu
             )));
         }
 
-        // 3. If HTTP status is OK, *then* consume the response to parse the JSON body
         let response_body = response.json::<Value>().await?;
-        // --- END FIX ---
 
-
-        // 4. Check the 'errors' field within the JSON response body
-        // Use .get() for safer access, as the field might not exist or not be a boolean
         if let Some(true) = response_body.get("errors").and_then(|v| v.as_bool()) {
              pb.set_message(format!("Batch completed with item errors."));
-             // Log the errors for inspection, but don't necessarily stop the whole process
              eprintln!("WARNING: Elasticsearch bulk operation reported errors for some items. Check response details.");
-             // You might want more detailed logging here, e.g., iterating through response_body["items"]
-             // println!("Bulk response with errors: {:?}", response_body); // Uncomment for debugging
+             // Consider logging response_body here for debugging errors
+             // eprintln!("Bulk response with errors: {:?}", response_body);
         } else {
              pb.set_message(format!("Batch successful."));
-             // Optional: Log success details if needed
-             // println!("Bulk operation succeeded: {:?}", response_body); // Uncomment for debugging
         }
     }
     pb.finish_with_message("Elasticsearch insertion complete");
 
-
-    // Force a refresh (remains the same)
+    // Force a refresh
     println!("Refreshing Elasticsearch index...");
     let refresh_start = Instant::now();
-    client.indices().refresh(elasticsearch::indices::IndicesRefreshParts::Index(&[ES_INDEX_NAME])).send().await?;
+    client.indices().refresh(IndicesRefreshParts::Index(&[ES_INDEX_NAME])).send().await?;
     println!("Elasticsearch refresh took: {:?}", refresh_start.elapsed());
 
     Ok(())
 }
 
-// --- Benchmark Functions (Updated PG Query) ---
 
-async fn benchmark_postgres(client: &Client, queries: &[&str]) -> Result<(), BenchmarkError> {
-    println!("{:<25} | {:<10} | {:<15}", "Query", "Count", "Latency (ms)");
-    println!("{:-<60}", ""); // Separator line
+// --- Benchmark Functions (Updated for JSONB and new ES Queries) ---
+
+async fn benchmark_postgres(client: &Client, queries: &[(&str, String)]) -> Result<(), BenchmarkError> {
+    println!("{:<25} | {:<10} | {:<15}", "Query Type", "Count", "Latency (ms)");
+    println!("{:-<60}", "");
 
     let mut total_latency = Duration::ZERO;
     let mut total_rows_found = 0;
     let query_count = queries.len();
 
-    // Use the precomputed tsvector column and GIN index
-    let statement = client.prepare(
-        &format!(r#"
-            SELECT id, title, ts_rank_cd(fts_doc, plainto_tsquery('english', $1)) as rank
-            FROM {PG_TABLE_NAME}
-            WHERE fts_doc @@ plainto_tsquery('english', $1)
-            ORDER BY rank DESC
-            LIMIT 10
-        "#, PG_TABLE_NAME=PG_TABLE_NAME)
-    ).await?;
+    // Prepare different statements for different JSONB operations
+    // Note: Parameter types might need adjustment based on the operator
+    let prep_tag_contains = client.prepare(&format!(
+        "SELECT data ->> 'title' FROM {PG_TABLE_NAME} WHERE data -> 'tags' @> $1::jsonb LIMIT 10", PG_TABLE_NAME=PG_TABLE_NAME
+    )).await?;
+    let prep_attr_exists = client.prepare(&format!(
+        "SELECT data ->> 'title' FROM {PG_TABLE_NAME} WHERE data -> 'attributes' ? $1 LIMIT 10", PG_TABLE_NAME=PG_TABLE_NAME
+    )).await?;
+    let prep_nested_attr_eq = client.prepare(&format!(
+        "SELECT data ->> 'title' FROM {PG_TABLE_NAME} WHERE data -> 'attributes' -> 'att2' ->> 'nested_key' = $1 LIMIT 10", PG_TABLE_NAME=PG_TABLE_NAME
+    )).await?;
+     let prep_attr_compare_num = client.prepare(&format!(
+        // Ensure casting for comparison. Use numeric for broader compatibility.
+        "SELECT data ->> 'title' FROM {PG_TABLE_NAME} WHERE (data -> 'attributes' ->> 'att0')::numeric > 500::numeric LIMIT 10", PG_TABLE_NAME=PG_TABLE_NAME
+    )).await?;
 
-    for query in queries {
+
+    for (query_desc, query_param_str) in queries {
         let start = Instant::now();
-        let rows = client.query(&statement, &[&query]).await?;
+        let rows = match *query_desc {
+            q if q.starts_with("tags @>") => {
+                // Parameter needs to be a valid JSON string representing the array/value
+                let param_jsonb: Value = serde_json::from_str(&query_param_str)
+                    .map_err(|e| BenchmarkError::Conversion(format!("Invalid JSON for tag query: {} - {}", query_param_str, e)))?;
+                client.query(&prep_tag_contains, &[&param_jsonb]).await?
+            },
+            q if q.starts_with("attr ?") => {
+                // Parameter is the key name (string)
+                client.query(&prep_attr_exists, &[&query_param_str]).await?
+            },
+            q if q.starts_with("attr nested =") => {
+                 // Parameter is the value to compare against (string)
+                client.query(&prep_nested_attr_eq, &[&query_param_str]).await?
+            },
+             q if q.starts_with("attr att0 >") => {
+                // Parameter needs to be parsed as a number
+                let param_num: f64 = query_param_str.parse()
+                     .map_err(|e| BenchmarkError::Conversion(format!("Invalid number for comparison: {} - {}", query_param_str, e)))?;
+                // Pass as f64, which ToSql handles for numeric
+                client.query(&prep_attr_compare_num, &[]).await?
+            }
+            _ => {
+                println!("WARN: Unsupported PG query description: {}", query_desc);
+                vec![] // Return empty vec if query type not recognized
+            }
+        };
         let duration = start.elapsed();
         total_latency += duration;
         total_rows_found += rows.len();
 
         println!(
             "{:<25} | {:<10} | {:<15.4}",
-            query,
+            query_desc,
             rows.len(),
             duration.as_secs_f64() * 1000.0
         );
-        // Optional: Print found titles
-        // for row in rows {
-        //     let title: &str = row.get("title");
-        //     println!("  - {}", title);
-        // }
     }
 
     let avg_latency = if query_count > 0 { total_latency / query_count as u32 } else { Duration::ZERO };
-    println!("{:-<60}", ""); // Separator line
+    println!("{:-<60}", "");
     println!(
         "PostgreSQL Average Latency: {:.4}ms ({} queries, {} total results)",
         avg_latency.as_secs_f64() * 1000.0,
@@ -418,26 +440,21 @@ async fn benchmark_postgres(client: &Client, queries: &[&str]) -> Result<(), Ben
     Ok(())
 }
 
-async fn benchmark_elasticsearch(client: &Elasticsearch, queries: &[&str]) -> Result<(), BenchmarkError> {
-    println!("{:<25} | {:<10} | {:<15}", "Query", "Count", "Latency (ms)");
-    println!("{:-<60}", ""); // Separator line
+async fn benchmark_elasticsearch(client: &Elasticsearch, queries: &[(&str, Value)]) -> Result<(), BenchmarkError> {
+    println!("{:<25} | {:<10} | {:<15}", "Query Type", "Count", "Latency (ms)");
+    println!("{:-<60}", "");
 
     let mut total_latency = Duration::ZERO;
     let mut total_rows_found = 0;
     let query_count = queries.len();
 
-    for query in queries {
+    for (query_desc, es_query_json) in queries {
         let start = Instant::now();
         let response = client
             .search(SearchParts::Index(&[ES_INDEX_NAME]))
             .body(json!({
-                "_source": ["title"], // Only fetch title if needed, otherwise false
-                "query": {
-                    "multi_match": {
-                        "query": query,
-                        "fields": ["title", "content"]
-                    }
-                },
+                "_source": ["title"], // Only fetch title
+                "query": es_query_json, // Use the provided JSON query structure
                 "size": 10
             }))
             .send()
@@ -446,29 +463,28 @@ async fn benchmark_elasticsearch(client: &Elasticsearch, queries: &[&str]) -> Re
         let duration = start.elapsed();
         total_latency += duration;
 
-        let response_body: serde_json::Value = response.json().await?;
+        // Check HTTP status before parsing JSON
+        if !response.status_code().is_success() {
+            let status = response.status_code();
+             let error_body = response.text().await?;
+             println!("WARN: Elasticsearch query failed for '{}' - Status: {}, Body: {}", query_desc, status, error_body);
+             continue; // Skip this query
+        }
+
+        let response_body: Value = response.json().await?;
         let hits = response_body["hits"]["hits"].as_array().map_or(0, |h| h.len());
         total_rows_found += hits;
 
         println!(
             "{:<25} | {:<10} | {:<15.4}",
-            query,
+            query_desc,
             hits,
             duration.as_secs_f64() * 1000.0
         );
-
-        // Optional: Print found titles
-        // if let Some(hits_array) = response_body["hits"]["hits"].as_array() {
-        //     for hit in hits_array {
-        //         if let Some(title) = hit["_source"]["title"].as_str() {
-        //             println!("  - {}", title);
-        //         }
-        //     }
-        // }
     }
 
     let avg_latency = if query_count > 0 { total_latency / query_count as u32 } else { Duration::ZERO };
-    println!("{:-<60}", ""); // Separator line
+    println!("{:-<60}", "");
     println!(
         "Elasticsearch Average Latency: {:.4}ms ({} queries, {} total results)",
         avg_latency.as_secs_f64() * 1000.0,
@@ -478,4 +494,7 @@ async fn benchmark_elasticsearch(client: &Elasticsearch, queries: &[&str]) -> Re
     Ok(())
 }
 
-
+// Add indicatif to Cargo.toml if not already present:
+// indicatif = { version = "0.17", features = ["tokio"] }
+// Add fake = { version = "2.5", features = ["chrono"] } or similar
+// Ensure chrono, serde, serde_json, tokio-postgres, elasticsearch, etc. are up-to-date.
