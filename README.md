@@ -101,3 +101,52 @@ Elasticsearch Average Latency: 4.2604ms (6 queries, 40 total results)
 
 Benchmark finished.
 ```
+
+```log
+Starting benchmark with JSONB focus...
+Connecting to databases...
+Connections established.
+Setting up database schemas...
+PostgreSQL table 'documents_jsonb' with JSONB column and GIN index checked/created.
+Elasticsearch index 'documents_jsonb' already exists.
+Schemas ready.
+Generating 1000000 documents...
+Generating 1000000 documents with tags and attributes...
+  [00:04:21] [########################################] 1000000/1000000 (0s)                           Data generation took: 261.454297585s
+Parsing JSON strings...
+JSON parsing took: 47.489257837s
+Inserting data into PostgreSQL (JSONB)...
+Starting PostgreSQL COPY operation for 1000000 documents...
+  [00:07:15] [########################################] 1000000/1000000 (0s)                           PostgreSQL JSONB insertion took: 435.243793827s
+Inserting data into Elasticsearch...
+Inserting 1000000 documents into Elasticsearch in batches of 1000...
+  [00:03:33] [########################################] 1000000/1000000 (0s) Elasticsearch insertion complete                                                                                                 Refreshing Elasticsearch index...
+Elasticsearch refresh took: 2.053437569s
+Elasticsearch insertion took: 215.171540213s
+
+Running PostgreSQL JSONB benchmarks...
+Query Type                | Count      | Latency (ms)   
+------------------------------------------------------------
+tags @> 'rust'            | 0          | 1.5742         
+attr ? 'att1'             | 10         | 1.1110         
+attr nested = 'com'       | 10         | 1.5932         
+attr att0 > 500           | 10         | 0.6640         
+attr ? 'att_opt_1'        | 10         | 0.6946         
+tags @> 'nonexistent'     | 0          | 0.5573         
+------------------------------------------------------------
+PostgreSQL Average Latency: 1.0324ms (6 queries, 40 total results)
+
+Running Elasticsearch benchmarks...
+Query Type                | Count      | Latency (ms)   
+------------------------------------------------------------
+tags: rust                | 0          | 389.4453       
+exists: attributes.att1   | 10         | 17.1993        
+attributes.att2.nested_key: com | 10         | 180.3277       
+attributes.att0 > 500     | 10         | 227.6713       
+exists: attributes.att_opt_1 | 10         | 8.7950         
+tags: nonexistent         | 0          | 5.2051         
+------------------------------------------------------------
+Elasticsearch Average Latency: 138.1073ms (6 queries, 40 total results)
+
+Benchmark finished.
+```
