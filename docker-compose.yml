@@ -50,6 +50,23 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
+      
+  rust-app:
+    build:
+      context: . # Use the current directory as the build context
+      # dockerfile: /workspace/rs-benchmark/Dockerfile # Specify the Dockerfile location
+    environment:
+      # Example environment variables - adjust names and values as needed by your app
+      DATABASE_URL: postgres://testuser:testpass@postgres:5432/testdb
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      DATA_COUNT: 10
+      RUST_LOG: info # Optional: Set log level
+    depends_on:
+      postgres:
+        condition: service_healthy # Wait for postgres to be ready
+      elasticsearch: # Corrected indentation
+        condition: service_healthy # Wait for elasticsearch to be ready
+    command: ["sh", "-c", "sleep 30 && ./rs-benchmark"] # Add sleep before starting
 
 volumes:
   pgdata:

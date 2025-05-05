@@ -77,7 +77,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Schemas ready.");
 
     // --- Data Generation (uses updated generate_data.rs) ---
-    let data_count = 1_000_000; // Adjust as needed
+    // Read data count from environment variable or use default
+    let data_count_str = env::var("DATA_COUNT").unwrap_or_else(|_| "1000".to_string()); // Default to 1K
+    let data_count: usize = data_count_str.parse().unwrap_or_else(|e| {
+        eprintln!("WARN: Invalid DATA_COUNT '{}', using default 1,000. Error: {}", data_count_str, e);
+        1_000
+    });
+
     println!("Generating {} documents...", data_count);
     let start_gen = Instant::now();
     let docs_json_strings = generate_data::generate_documents(data_count).await;

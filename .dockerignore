@@ -1,0 +1,14 @@
+./README.md
+./Dockerfile
+./data.ndjson
+./docker-compose.yml
+./Dockerfile
+./.dockerignore
+./.env
+./.git
+./.gitignore
+./.gitpod.yml
+./init
+./README.md
+./script.sh
+./target
