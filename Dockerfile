@@ -16,8 +16,17 @@ RUN cargo build --release
 # Stage 2: Runtime
 FROM ubuntu:24.04
 
-# Install minimal runtime dependencies
-RUN apt-get update && apt-get install -y libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
+# Set the locale environment variables
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+# Install dependencies and set up UTF-8 locale
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends locales libssl-dev ca-certificates && \
+    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && \
+    locale-gen en_US.UTF-8 && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
 WORKDIR /app
