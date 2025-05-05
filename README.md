@@ -150,3 +150,11 @@ Elasticsearch Average Latency: 138.1073ms (6 queries, 40 total results)
 
 Benchmark finished.
 ```
+
+
+
+## FAQ
+
+> Q: Error response from daemon: path / is mounted on / but it is not a shared or slave mount
+
+> A: sudo mount --make-rshared /
