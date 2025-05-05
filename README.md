@@ -151,6 +151,9 @@ Elasticsearch Average Latency: 138.1073ms (6 queries, 40 total results)
 Benchmark finished.
 ```
 
+## monitoring
+![monitoring](image.png)
+
 
 
 ## FAQ
@@ -158,3 +161,6 @@ Benchmark finished.
 > Q: Error response from daemon: path / is mounted on / but it is not a shared or slave mount
 
 > A: sudo mount --make-rshared /
+
+sudo chmod 777  ./grafana/data/ -R
+sudo  chmod 777 ./prometheus/data -R

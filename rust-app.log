@@ -1,0 +1,138 @@
+rust-app-1  | Starting benchmark with JSONB focus...
+rust-app-1  | Connecting to databases...
+rust-app-1  | Connections established.
+rust-app-1  | Setting up database schemas...
+rust-app-1  | PostgreSQL table 'documents_jsonb' with JSONB column and GIN index checked/created.
+rust-app-1  | Elasticsearch index 'documents_jsonb' already exists.
+rust-app-1  | Schemas ready.
+rust-app-1  | Generating 100000 documents...
+rust-app-1  | Generating 100000 documents with tags and attributes...
+rust-app-1  | Data generation took: 2.832347926s
+rust-app-1  | Parsing JSON strings...
+rust-app-1  | JSON parsing took: 786.157599ms
+rust-app-1  | Inserting data into PostgreSQL (JSONB)...
+rust-app-1  | Starting PostgreSQL COPY operation for 100000 documents...
+rust-app-1  | PostgreSQL JSONB insertion took: 43.814268801s
+rust-app-1  | Inserting data into Elasticsearch...
+rust-app-1  | Inserting 100000 documents into Elasticsearch in batches of 1000...
+rust-app-1  | Refreshing Elasticsearch index...
+rust-app-1  | Elasticsearch refresh took: 5.243465184s
+rust-app-1  | Elasticsearch insertion took: 30.845096967s
+rust-app-1  | 
+rust-app-1  | Running PostgreSQL JSONB benchmarks...
+rust-app-1  | Query Type                | Count      | Latency (ms)   
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | tags @> 'rust'            | 0          | 72.0703        
+rust-app-1  | attr ? 'att1'             | 10         | 1.7519         
+rust-app-1  | attr nested = 'com'       | 10         | 66.7287        
+rust-app-1  | attr att0 > 500           | 10         | 3.3575         
+rust-app-1  | attr ? 'att_opt_1'        | 10         | 1.5092         
+rust-app-1  | tags @> 'nonexistent'     | 0          | 0.9133         
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | PostgreSQL Average Latency: 24.3885ms (6 queries, 40 total results)
+rust-app-1  | 
+rust-app-1  | Running Elasticsearch benchmarks...
+rust-app-1  | Query Type                | Count      | Latency (ms)   
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | tags: rust                | 0          | 40.2890        
+rust-app-1  | exists: attributes.att1   | 10         | 21.4099        
+rust-app-1  | attributes.att2.nested_key: com | 10         | 46.8200        
+rust-app-1  | attributes.att0 > 500     | 10         | 58.2901        
+rust-app-1  | exists: attributes.att_opt_1 | 10         | 16.8392        
+rust-app-1  | tags: nonexistent         | 0          | 1.4966         
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | Elasticsearch Average Latency: 30.8575ms (6 queries, 40 total results)
+rust-app-1  | 
+rust-app-1  | Benchmark finished.
+rust-app-1  | Starting benchmark with JSONB focus...
+rust-app-1  | Connecting to databases...
+rust-app-1  | Connections established.
+rust-app-1  | Setting up database schemas...
+rust-app-1  | PostgreSQL table 'documents_jsonb' with JSONB column and GIN index checked/created.
+rust-app-1  | Elasticsearch index 'documents_jsonb' already exists.
+rust-app-1  | Schemas ready.
+rust-app-1  | Generating 100000 documents...
+rust-app-1  | Generating 100000 documents with tags and attributes...
+rust-app-1  | Data generation took: 3.096334508s
+rust-app-1  | Parsing JSON strings...
+rust-app-1  | JSON parsing took: 691.23957ms
+rust-app-1  | Inserting data into PostgreSQL (JSONB)...
+rust-app-1  | Starting PostgreSQL COPY operation for 100000 documents...
+rust-app-1  | PostgreSQL JSONB insertion took: 62.052154676s
+rust-app-1  | Inserting data into Elasticsearch...
+rust-app-1  | Inserting 100000 documents into Elasticsearch in batches of 1000...
+rust-app-1  | Refreshing Elasticsearch index...
+rust-app-1  | Elasticsearch refresh took: 2.854920081s
+rust-app-1  | Elasticsearch insertion took: 22.362194775s
+rust-app-1  | 
+rust-app-1  | Running PostgreSQL JSONB benchmarks...
+rust-app-1  | Query Type                | Count      | Latency (ms)   
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | tags @> 'rust'            | 0          | 69.2553        
+rust-app-1  | attr ? 'att1'             | 10         | 4.2406         
+rust-app-1  | attr nested = 'com'       | 10         | 29.1705        
+rust-app-1  | attr att0 > 500           | 10         | 2.1030         
+rust-app-1  | attr ? 'att_opt_1'        | 10         | 1.6275         
+rust-app-1  | tags @> 'nonexistent'     | 0          | 20.5498        
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | PostgreSQL Average Latency: 21.1578ms (6 queries, 40 total results)
+rust-app-1  | 
+rust-app-1  | Running Elasticsearch benchmarks...
+rust-app-1  | Query Type                | Count      | Latency (ms)   
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | tags: rust                | 0          | 20.1458        
+rust-app-1  | exists: attributes.att1   | 10         | 23.2868        
+rust-app-1  | attributes.att2.nested_key: com | 10         | 24.2469        
+rust-app-1  | attributes.att0 > 500     | 10         | 34.2423        
+rust-app-1  | exists: attributes.att_opt_1 | 10         | 24.3395        
+rust-app-1  | tags: nonexistent         | 0          | 13.5589        
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | Elasticsearch Average Latency: 23.3034ms (6 queries, 40 total results)
+rust-app-1  | 
+rust-app-1  | Benchmark finished.
+rust-app-1  | Starting benchmark with JSONB focus...
+rust-app-1  | Connecting to databases...
+rust-app-1  | Connections established.
+rust-app-1  | Setting up database schemas...
+rust-app-1  | PostgreSQL table 'documents_jsonb' with JSONB column and GIN index checked/created.
+rust-app-1  | Elasticsearch index 'documents_jsonb' already exists.
+rust-app-1  | Schemas ready.
+rust-app-1  | Generating 100000 documents...
+rust-app-1  | Generating 100000 documents with tags and attributes...
+rust-app-1  | Data generation took: 3.113694874s
+rust-app-1  | Parsing JSON strings...
+rust-app-1  | JSON parsing took: 663.539839ms
+rust-app-1  | Inserting data into PostgreSQL (JSONB)...
+rust-app-1  | Starting PostgreSQL COPY operation for 100000 documents...
+rust-app-1  | PostgreSQL JSONB insertion took: 86.60591598s
+rust-app-1  | Inserting data into Elasticsearch...
+rust-app-1  | Inserting 100000 documents into Elasticsearch in batches of 1000...
+rust-app-1  | Refreshing Elasticsearch index...
+rust-app-1  | Elasticsearch refresh took: 813.7454ms
+rust-app-1  | Elasticsearch insertion took: 28.535274662s
+rust-app-1  | 
+rust-app-1  | Running PostgreSQL JSONB benchmarks...
+rust-app-1  | Query Type                | Count      | Latency (ms)   
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | tags @> 'rust'            | 0          | 461.7515       
+rust-app-1  | attr ? 'att1'             | 10         | 6.1202         
+rust-app-1  | attr nested = 'com'       | 10         | 17.6956        
+rust-app-1  | attr att0 > 500           | 10         | 2.3541         
+rust-app-1  | attr ? 'att_opt_1'        | 10         | 1.6720         
+rust-app-1  | tags @> 'nonexistent'     | 0          | 5.9039         
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | PostgreSQL Average Latency: 82.5829ms (6 queries, 40 total results)
+rust-app-1  | 
+rust-app-1  | Running Elasticsearch benchmarks...
+rust-app-1  | Query Type                | Count      | Latency (ms)   
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | tags: rust                | 0          | 16.8372        
+rust-app-1  | exists: attributes.att1   | 10         | 5.3173         
+rust-app-1  | attributes.att2.nested_key: com | 10         | 16.7046        
+rust-app-1  | attributes.att0 > 500     | 10         | 19.1952        
+rust-app-1  | exists: attributes.att_opt_1 | 10         | 12.1896        
+rust-app-1  | tags: nonexistent         | 0          | 6.5166         
+rust-app-1  | ------------------------------------------------------------
+rust-app-1  | Elasticsearch Average Latency: 12.7934ms (6 queries, 40 total results)
+rust-app-1  | 
+rust-app-1  | Benchmark finished.
