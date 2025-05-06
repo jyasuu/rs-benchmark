@@ -59,7 +59,7 @@ services:
       # Example environment variables - adjust names and values as needed by your app
       DATABASE_URL: postgres://testuser:testpass@postgres:5432/testdb
       ELASTICSEARCH_URL: http://elasticsearch:9200
-      DATA_COUNT: 100000
+      DATA_COUNT: 1000000
       RUST_LOG: info # Optional: Set log level
     depends_on:
       postgres:
@@ -69,25 +69,25 @@ services:
     command: ["sh", "-c", "sleep 30 && ./rs-benchmark"] # Add sleep before starting
 
     
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    restart: unless-stopped
-    privileged: true
-    expose:
-      - 8080
-    command:
-      - '-housekeeping_interval=15s'
-      - '-docker_only=true'
-      - '-store_container_labels=false'
-    devices:
-      - /dev/kmsg
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:rw
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-      - /etc/machine-id:/etc/machine-id:ro
+  # cadvisor:
+  #   image: gcr.io/cadvisor/cadvisor:v0.49.1
+  #   restart: unless-stopped
+  #   privileged: true
+  #   expose:
+  #     - 8080
+  #   command:
+  #     - '-housekeeping_interval=15s'
+  #     - '-docker_only=true'
+  #     - '-store_container_labels=false'
+  #   devices:
+  #     - /dev/kmsg
+  #   volumes:
+  #     - /:/rootfs:ro
+  #     - /var/run:/var/run:rw
+  #     - /sys:/sys:ro
+  #     - /var/lib/docker/:/var/lib/docker:ro
+  #     - /dev/disk/:/dev/disk:ro
+  #     - /etc/machine-id:/etc/machine-id:ro
       
   prometheus:
     image: prom/prometheus:latest
@@ -107,29 +107,29 @@ services:
       # /!\ To be modified depending on your needs /!\
       - ./prometheus/data:/prometheus
       - ./prometheus:/etc/prometheus/
-    depends_on:
-      - cadvisor
-      - node-exporter
-    links:
-      - cadvisor:cadvisor
-      - node-exporter:node-exporter
+  #   depends_on:
+  #     - cadvisor
+  #     - node-exporter
+  #   links:
+  #     - cadvisor:cadvisor
+  #     - node-exporter:node-exporter
 
-  node-exporter:
-    image: prom/node-exporter:latest
-    restart: unless-stopped
-    expose:
-      - 9100
-    command:
-      - --path.procfs=/host/proc
-      - --path.sysfs=/host/sys
-      - --path.rootfs=/host
-      - --collector.filesystem.ignored-mount-points
-      - ^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-      - /:/host:ro,rslave
+  # node-exporter:
+  #   image: prom/node-exporter:latest
+  #   restart: unless-stopped
+  #   expose:
+  #     - 9100
+  #   command:
+  #     - --path.procfs=/host/proc
+  #     - --path.sysfs=/host/sys
+  #     - --path.rootfs=/host
+  #     - --collector.filesystem.ignored-mount-points
+  #     - ^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)
+  #   volumes:
+  #     - /proc:/host/proc:ro
+  #     - /sys:/host/sys:ro
+  #     - /:/rootfs:ro
+  #     - /:/host:ro,rslave
 
       
   alertmanager:

@@ -153,6 +153,8 @@ Benchmark finished.
 
 ## monitoring
 ![monitoring](image.png)
+![monitoring](image2.png)
+
 
 
 
@@ -162,5 +164,17 @@ Benchmark finished.
 
 > A: sudo mount --make-rshared /
 
-sudo chmod 777  ./grafana/data/ -R
-sudo  chmod 777 ./prometheus/data -R
+sudo chmod 777 grafana/data/ -R
+sudo chmod 777 prometheus/data/ -R
+
+wget https://github.com/google/cadvisor/releases/download/v0.52.1/cadvisor-v0.52.1-linux-amd64
+chmod +x cadvisor-v0.52.1-linux-amd64
+sudo ./cadvisor-v0.52.1-linux-amd64
+https://8080-jyasuu-rsbenchmark-twrlejodozg.ws-us118.gitpod.io/containers/
+
+wget https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-amd64.tar.gz
+tar xzf node_exporter-1.9.1.linux-amd64.tar.gz
+chmod +x cadvisor-v0.52.1-linux-amd64
+sudo ./node_exporter-1.9.1.linux-amd64/node_exporter
+https://9100-jyasuu-rsbenchmark-twrlejodozg.ws-us118.gitpod.io/
+
