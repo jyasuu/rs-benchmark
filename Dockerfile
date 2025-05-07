@@ -33,6 +33,9 @@ WORKDIR /app
 
 # Copy the compiled binary from the build stage
 COPY --from=builder /usr/src/app/target/release/rs-benchmark .
+COPY --from=builder /usr/src/app/target/release/rs_benchmark_api .
+
+EXPOSE 4444
 
 # Set the startup command
 CMD ["./rs-benchmark"]
