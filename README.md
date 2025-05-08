@@ -169,12 +169,20 @@ sudo chmod 777 prometheus/data/ -R
 
 wget https://github.com/google/cadvisor/releases/download/v0.52.1/cadvisor-v0.52.1-linux-amd64
 chmod +x cadvisor-v0.52.1-linux-amd64
-sudo ./cadvisor-v0.52.1-linux-amd64
-https://8080-jyasuu-rsbenchmark-twrlejodozg.ws-us118.gitpod.io/containers/
+sudo ./cadvisor-v0.52.1-linux-amd64 &
+
 
 wget https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-amd64.tar.gz
 tar xzf node_exporter-1.9.1.linux-amd64.tar.gz
 chmod +x cadvisor-v0.52.1-linux-amd64
-sudo ./node_exporter-1.9.1.linux-amd64/node_exporter
-https://9100-jyasuu-rsbenchmark-twrlejodozg.ws-us118.gitpod.io/
+sudo ./node_exporter-1.9.1.linux-amd64/node_exporter &
 
+
+
+sudo gpg -k
+sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt-get update
+sudo apt-get install k6
+
+k6 run test.k6.js

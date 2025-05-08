@@ -181,12 +181,12 @@ async fn setup_postgres(client: &Client) -> Result<(), BenchmarkError> {
         );
         -- Create a GIN index on the JSONB column. This is crucial for performance.
         CREATE INDEX IF NOT EXISTS documents_data_gin_idx ON {PG_TABLE_NAME} USING GIN(data);
-        CREATE INDEX IF NOT EXISTS documents_data_gin_json_idx ON {PG_TABLE_NAME} USING GIN (data jsonb_path_ops);
-        CREATE INDEX IF NOT EXISTS documents_data_gin_jsonb_idx ON {PG_TABLE_NAME} USING GIN (data jsonb_ops);
+        -- CREATE INDEX IF NOT EXISTS documents_data_gin_json_idx ON {PG_TABLE_NAME} USING GIN (data jsonb_path_ops);
+        -- CREATE INDEX IF NOT EXISTS documents_data_gin_jsonb_idx ON {PG_TABLE_NAME} USING GIN (data jsonb_ops);
 
         -- Optional: Index specific paths if needed for very specific query patterns
-        CREATE INDEX IF NOT EXISTS documents_tags_gin_idx ON {PG_TABLE_NAME} USING GIN ((data -> 'tags'));
-        CREATE INDEX IF NOT EXISTS documents_attr_gin_idx ON {PG_TABLE_NAME} USING GIN ((data -> 'attributes'));
+        -- CREATE INDEX IF NOT EXISTS documents_tags_gin_idx ON {PG_TABLE_NAME} USING GIN ((data -> 'tags'));
+        -- CREATE INDEX IF NOT EXISTS documents_attr_gin_idx ON {PG_TABLE_NAME} USING GIN ((data -> 'attributes'));
 
         -- Optional: Clear table for a fresh benchmark run
         -- TRUNCATE TABLE {PG_TABLE_NAME} RESTART IDENTITY;

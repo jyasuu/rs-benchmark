@@ -69,7 +69,7 @@ services:
       elasticsearch: # Corrected indentation
         condition: service_healthy # Wait for elasticsearch to be ready
     # command: ["sh", "-c", "sleep 30 && ./rs-benchmark"] # Add sleep before starting
-    command: ["sh", "-c", "./rs_benchmark_api"] # Add sleep before starting
+    command: ["sh", "-c", "sleep 30 && ./rs-benchmark && ./rs_benchmark_api"] # Add sleep before starting
 
     
   # cadvisor:
