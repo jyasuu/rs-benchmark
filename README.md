@@ -164,19 +164,19 @@ Benchmark finished.
 
 > A: sudo mount --make-rshared /
 
+
+
+```sh
 sudo chmod 777 grafana/data/ -R
 sudo chmod 777 prometheus/data/ -R
 
 wget https://github.com/google/cadvisor/releases/download/v0.52.1/cadvisor-v0.52.1-linux-amd64
 chmod +x cadvisor-v0.52.1-linux-amd64
-sudo ./cadvisor-v0.52.1-linux-amd64 &
 
 
 wget https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-amd64.tar.gz
 tar xzf node_exporter-1.9.1.linux-amd64.tar.gz
 chmod +x cadvisor-v0.52.1-linux-amd64
-sudo ./node_exporter-1.9.1.linux-amd64/node_exporter &
-
 
 
 sudo gpg -k
@@ -185,4 +185,20 @@ echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.i
 sudo apt-get update
 sudo apt-get install k6
 
-k6 run test.k6.js
+sudo ./cadvisor-v0.52.1-linux-amd64 &
+sudo ./node_exporter-1.9.1.linux-amd64/node_exporter &
+
+
+
+https://grafana.com/grafana/dashboards/2587-k6-load-testing-results/
+
+
+k6 run --out influxdb=http://localhost:8086 postgres.k6.js
+k6 run --out influxdb=http://localhost:8086 elasticsearch.k6.js
+
+```
+
+
+https://snapshots.raintank.io/dashboard/snapshot/vqs35qIodt8tc62DwyEJPP2dHHN4aZBu
+
+https://snapshots.raintank.io/dashboard/snapshot/hGqeoJVc0ExYc2Vt5RwW8CcPrhbo9I77
