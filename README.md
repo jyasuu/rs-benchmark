@@ -202,3 +202,5 @@ k6 run --out influxdb=http://localhost:8086 elasticsearch.k6.js
 https://snapshots.raintank.io/dashboard/snapshot/vqs35qIodt8tc62DwyEJPP2dHHN4aZBu
 
 https://snapshots.raintank.io/dashboard/snapshot/hGqeoJVc0ExYc2Vt5RwW8CcPrhbo9I77
+
+https://snapshots.raintank.io/dashboard/snapshot/QMRI9ay58sab8VMGfUlqXbcqfYgd4K7K

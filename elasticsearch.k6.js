@@ -18,7 +18,7 @@ export const options = {
 };
 
 export default function () {
-  const res = http.get('http://localhost:4444/api/postgres?tag=sint');
+  const res = http.get('http://localhost:4444/api/elasticsearch?tag=sint');
   check(res, { 'status was 200': (r) => r.status == 200 });
   sleep(1);
 }

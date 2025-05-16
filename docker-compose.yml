@@ -59,7 +59,7 @@ services:
       # Example environment variables - adjust names and values as needed by your app
       DATABASE_URL: postgres://testuser:testpass@postgres:5432/testdb
       ELASTICSEARCH_URL: http://elasticsearch:9200
-      DATA_COUNT: 100000
+      DATA_COUNT: 1000000
       RUST_LOG: debug # Optional: Set log level
     ports:
       - 4444:4444
