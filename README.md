@@ -204,3 +204,31 @@ https://snapshots.raintank.io/dashboard/snapshot/vqs35qIodt8tc62DwyEJPP2dHHN4aZB
 https://snapshots.raintank.io/dashboard/snapshot/hGqeoJVc0ExYc2Vt5RwW8CcPrhbo9I77
 
 https://snapshots.raintank.io/dashboard/snapshot/QMRI9ay58sab8VMGfUlqXbcqfYgd4K7K
+
+
+
+## TODO
+
+
+```sql
+SELECT * FROM sample_table 
+WHERE 1 = 1
+  AND sample_column @@ '$.field1 == "SAMPLE_VALUE_1"'
+  AND sample_column @@ '$.field2 like_regex ".*SAMPLE_VALUE_2.*"'
+  AND sample_column @@ '$.field3 like_regex ".*SAMPLE_VALUE_3.*"'
+  AND sample_column @@ '$.field4 like_regex ".*SAMPLE_VALUE_4.*"'
+  AND sample_column @@ '$.field5 like_regex ".*SAMPLE_VALUE_5.*"'
+  AND sample_column @@ '$.field6 == "SAMPLE_VALUE_6"'
+  AND sample_column @@ '$.field7 == "SAMPLE_VALUE_7"'
+  AND sample_column @@ '$.field6 == "A" || $.field6 == "B" || $.field6 == "K"'
+  AND sample_column @@ '$.field8 == "SAMPLE_DOC_ID"'
+  AND sample_column @@ '$.field9 == "SAMPLE_STATUS"'
+  AND sample_column @@ '$.timestamp >= SAMPLE_START_TIME && $.timestamp <= SAMPLE_END_TIME'
+  AND sample_column @@ '$.uuid == "SAMPLE_UUID"'
+  AND sample_column @? '$.nested_array1[*] ? (@.subfield1 like_regex ".*SAMPLE_TEXT_1.*")'
+  AND sample_column @? '$.nested_array1[*] ? (@.subfield2 like_regex ".*SAMPLE_TEXT_2.*")'
+  AND sample_column @? '$.nested_map.*[*] ? (@ == "SAMPLE_CODE")'
+  AND sample_column @? 'strict $.nested_map ? (exists (@."SAMPLE_KEY"))'
+  AND sample_column @? '$.nested_map."SAMPLE_KEY"[*] ? (@ == "SAMPLE_SUBCODE")'
+
+```
