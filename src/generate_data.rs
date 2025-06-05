@@ -1,6 +1,6 @@
 // src/generate_data.rs
 use chrono::Utc;
-use fake::{Fake, Faker}; // Use Faker for more diverse attribute values
+use fake::{locales::JA_JP, Fake, Faker}; // Use Faker for more diverse attribute values
 use rand::Rng;
 use serde_json::json; // Needed for creating the attributes object
 
@@ -20,8 +20,8 @@ pub async fn generate_documents(count: usize) -> Vec<String> {
         .progress_chars("#>-"));
 
     for i in 0..count {
-        let title = fake::faker::lorem::zh_tw::Words(5..20).fake::<Vec<String>>().join(" ");
-        let content = fake::faker::lorem::zh_tw::Paragraphs(5..10).fake::<Vec<String>>().join(" ");
+        let title = fake::vec![String as fake::faker::address::raw::CityName(JA_JP); 3..5].join(" ");
+        let content = fake::vec![String as fake::faker::address::raw::CityName(JA_JP); 5..50].join(" ");
         let created_at = Utc::now() - chrono::Duration::days(rng.gen_range(0..365));
 
         // Generate Tags
@@ -53,7 +53,6 @@ pub async fn generate_documents(count: usize) -> Vec<String> {
             }
         });
 
-
         let doc = json!({
             "title": title,
             "content": content,
@@ -61,7 +60,7 @@ pub async fn generate_documents(count: usize) -> Vec<String> {
             "tags": tags,
             "attributes": attributes
         });
-
+        println!("{:#?}",doc);
         docs.push(doc.to_string());
         pb.inc(1);
     }

@@ -124,6 +124,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("attr att0 > 500", json!(500).to_string()),
         // Optional attribute existence ('?')
         ("attr ? 'att_opt_1'", "att_opt_1".to_string()),
+        // JSONPath query on title
+        ("jsonpath: title like_regex", r#"$.title like_regex ".*鈴木.*""#.to_string()),
         // Non-existent tag
         ("tags @> 'nonexistent'", json!(["nonexistent"]).to_string()),
     ];
@@ -140,6 +142,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("attributes.att0 > 500", json!({"range": {"attributes.att0": {"gt": 500}}})),
         // Check for optional attribute existence
         ("exists: attributes.att_opt_1", json!({"exists": {"field": "attributes.att_opt_1"}})),
+        // Regex query on title (equivalent to the jsonpath like_regex)
+        ("title regex '鈴木'", json!({
+            "match": {
+                "title": "berg 佐々木"
+            }
+        })),
         // Non-existent tag
         ("tags: nonexistent", json!({"term": {"tags": "nonexistent"}})),
     ];
@@ -229,7 +237,7 @@ async fn setup_elasticsearch(client: &Elasticsearch) -> Result<(), BenchmarkErro
                                 "att1": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 }}}, // Text + keyword
                                 "att2": { "type": "object", "enabled": true }, // Allow dynamic mapping within att2
                                 "att3": { "type": "keyword" } // Array of strings often best as keyword
-                                // Optional attributes will be dynamically mapped
+                                // Optional attributes (att_opt_*) will be dynamically mapped
                             }
                         }
                     }
@@ -392,6 +400,9 @@ async fn benchmark_postgres(client: &Client, queries: &[(&str, String)]) -> Resu
         // Ensure casting for comparison. Use numeric for broader compatibility.
         "SELECT data ->> 'title' FROM {PG_TABLE_NAME} WHERE (data -> 'attributes' ->> 'att0')::numeric > 500::numeric LIMIT 10", PG_TABLE_NAME=PG_TABLE_NAME
     )).await?;
+    let prep_jsonpath_field2_match = client.prepare(&format!(
+        "SELECT data ->> 'title' FROM {PG_TABLE_NAME} WHERE data @@ '$.title like_regex \".*berg .* 佐々木.*\"' LIMIT 10", PG_TABLE_NAME=PG_TABLE_NAME
+    )).await?;
 
 
     for (query_desc, query_param_str) in queries {
@@ -417,6 +428,10 @@ async fn benchmark_postgres(client: &Client, queries: &[(&str, String)]) -> Resu
                      .map_err(|e| BenchmarkError::Conversion(format!("Invalid number for comparison: {} - {}", query_param_str, e)))?;
                 // Pass as f64, which ToSql handles for numeric
                 client.query(&prep_attr_compare_num, &[]).await?
+            },
+            q if q.starts_with("jsonpath: title like_regex") => {
+                // Parameter is the jsonpath expression string
+                client.query(&prep_jsonpath_field2_match, &[]).await?
             }
             _ => {
                 println!("WARN: Unsupported PG query description: {}", query_desc);
