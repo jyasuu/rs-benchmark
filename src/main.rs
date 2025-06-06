@@ -145,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Regex query on title (equivalent to the jsonpath like_regex)
         ("title regex '鈴木'", json!({
             "match": {
-                "title": "berg 佐々木"
+                "title": "chester 栞奈"
             }
         })),
         // Non-existent tag
@@ -401,7 +401,7 @@ async fn benchmark_postgres(client: &Client, queries: &[(&str, String)]) -> Resu
         "SELECT data ->> 'title' FROM {PG_TABLE_NAME} WHERE (data -> 'attributes' ->> 'att0')::numeric > 500::numeric LIMIT 10", PG_TABLE_NAME=PG_TABLE_NAME
     )).await?;
     let prep_jsonpath_field2_match = client.prepare(&format!(
-        "SELECT data ->> 'title' FROM {PG_TABLE_NAME} WHERE data @@ '$.title like_regex \".*berg .* 佐々木.*\"' LIMIT 10", PG_TABLE_NAME=PG_TABLE_NAME
+        "SELECT data ->> 'title' FROM {PG_TABLE_NAME} WHERE data @@ '$.title like_regex \".*chester.*\"' AND data @@ '$.title like_regex \".*栞奈.*\"' LIMIT 10", PG_TABLE_NAME=PG_TABLE_NAME
     )).await?;
 
 

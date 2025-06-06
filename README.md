@@ -232,3 +232,30 @@ WHERE 1 = 1
   AND sample_column @? '$.nested_map."SAMPLE_KEY"[*] ? (@ == "SAMPLE_SUBCODE")'
 
 ```
+
+
+```bash
+
+curl -X GET "localhost:9200/documents_jsonb/_search" -H "Content-Type: application/json" -d'
+{
+  "query": {
+    "match": {
+                "title": "chester 栞奈"
+            }
+  }
+}' | jq '.hits.hits[]._source.title'
+
+curl -X GET "localhost:9200/documents_jsonb/_search" -H "Content-Type: application/json" -d'
+{
+  "query": {
+    "query_string": {
+      "query": "(chester) AND (栞奈)",
+      "default_field": "title"
+    }
+  }
+}' | jq '.hits.hits[]._source.title'
+
+
+docker compose exec -it postgres psql -U testuser -d testdb -c "SELECT data ->> 'title' FROM documents_jsonb WHERE data @@ '$.title like_regex \".*chester.*\"' AND data @@ '$.title like_regex \".*栞奈.*\"' LIMIT 10;"
+
+```
